@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: kpo_user
+      POSTGRES_PASSWORD: kpo_pass
+      POSTGRES_DB:   kpo_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  file-service:
+    build: ./file_service
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql+psycopg2://kpo_user:kpo_pass@postgres:5432/kpo_db
+      DATA_DIR: /data
+    volumes:
+      - file_data:/data
+    networks:
+      - internal
+
+  analysis-service:
+    build: ./analysis_service
+    depends_on:
+      - postgres
+      - file-service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://kpo_user:kpo_pass@postgres:5432/kpo_db
+      FILE_SERVICE_URL: http://file-service:8001
+    networks:
+      - internal
+
+  api-gateway:
+    build: ./api_gateway
+    depends_on:
+      - file-service
+      - analysis-service
+    environment:
+      FILE_SERVICE_URL: http://file-service:8001
+      ANALYSIS_SERVICE_URL: http://analysis-service:8002
+    ports:
+      - "8000:8000"    # Единственный внешний порт — API Gateway
+    networks:
+      - internal
+      - external
+
+networks:
+  internal:
+    internal: true
+
+  external:
+    driver: bridge
+
+volumes:
+  pgdata:
+  file_data:
